@@ -49,6 +49,8 @@ for i in range(25):
 
         jS_cr = []
         jB_cr = []
+        jbeta2_cr = []
+        jH_cr = []
         beta2s_cr = []
         Hs_cr = []
         us_rt = []
@@ -63,10 +65,16 @@ for i in range(25):
             
             jump_S_cr = d.get_jump(S_dg)
             jump_B_cr = d.get_jump(B_dg)
+            jump_beta2_cr = d.get_jump(B_dg)
+            jump_H_cr = d.get_jump(B_dg)
+
             H_cr = fd.project(H_dg, d.V_cr)
             beta2_cr = fd.project(beta2_dg, d.V_cr)
             jS_cr.append(jump_S_cr)
             jB_cr.append(jump_B_cr)
+            jbeta2_cr.append(jump_beta2_cr)
+            jH_cr.append(jump_H_cr)
+
             beta2s_cr.append(beta2_cr.dat.data)
             Hs_cr.append(H_cr.dat.data)
             
@@ -80,7 +88,7 @@ for i in range(25):
         beta2s_cr = np.array(beta2s_cr, np.float32)
         us_rt = np.array(us_rt, dtype=np.float32)
 
-        edge_features = np.stack([jS_cr, jB_cr, Hs_cr, beta2s_cr, us_rt]).transpose((1,2,0))
+        edge_features = np.stack([jS_cr, jH_cr,  Hs_cr, beta2s_cr, us_rt]).transpose((1,2,0))
         np.save(f'data/edge_features_{i}.npy', edge_features)
         np.save(f'data/coords_{i}', coords)
         np.save(f'data/edges_{i}.npy', edges)

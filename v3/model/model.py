@@ -83,8 +83,8 @@ class EncoderProcesserDecoder(nn.Module):
         self.decoder = Decoder(hidden_size=hidden_size, output_size=2)
 
     def forward(self, graph):
-        # Edge features are (jump S, jump B, avg H, avg Beta2, nx, ny, dx, dy, dd)
-        n = graph.edge_attr[:,[4,5]]
+        # edge features (jump S, jump B, jump H, jump beta2, avg beta2, avg h, nx, ny, len)
+        n = graph.edge_attr[:,[6,7]]
 
         graph= self.encoder(graph)
         for model in self.processer_list:

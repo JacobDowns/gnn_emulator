@@ -14,7 +14,7 @@ save_epoch = 10
 epochs = 250
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-simulator = Simulator(message_passing_num=4, node_input_size=4, edge_input_size=9, device=device)
+simulator = Simulator(message_passing_num=4, node_input_size=6, edge_input_size=9, device=device)
 optimizer = torch.optim.Adam(simulator.parameters(), lr=1e-4)
 #simulator.load_checkpoint()
 print('Optimizer initialized')
@@ -73,10 +73,9 @@ if __name__ == '__main__':
     data = loader.data
   
     N = len(data)
-    train_frac = 0.9
+    train_frac = 0.85
     N_train = int(N*train_frac)
     N_test = N - N_train
-
     train_data = data[0:N_train]
     test_data = data[N_train:]
 
