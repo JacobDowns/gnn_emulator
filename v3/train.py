@@ -14,7 +14,7 @@ save_epoch = 10
 epochs = 250
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-simulator = Simulator(message_passing_num=4, node_input_size=6, edge_input_size=9, device=device)
+simulator = Simulator(message_passing_num=8, node_input_size=4, edge_input_size=7, device=device)
 optimizer = torch.optim.Adam(simulator.parameters(), lr=1e-4)
 #simulator.load_checkpoint()
 print('Optimizer initialized')

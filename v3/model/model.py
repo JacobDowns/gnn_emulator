@@ -5,7 +5,15 @@ from torch_geometric.data import Data
 
 def build_mlp(in_size, hidden_size, out_size, lay_norm=True):
 
-    module = nn.Sequential(nn.Linear(in_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, hidden_size), nn.ReLU(), nn.Linear(hidden_size, out_size))
+    module = nn.Sequential(
+        nn.Linear(in_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(hidden_size, hidden_size),
+        nn.ReLU(),
+        nn.Linear(hidden_size, out_size)
+    )
     if lay_norm: return nn.Sequential(module,  nn.LayerNorm(normalized_shape=out_size))
     return module
 
@@ -13,9 +21,9 @@ def build_mlp(in_size, hidden_size, out_size, lay_norm=True):
 class Encoder(nn.Module):
 
     def __init__(self,
-                edge_input_size=64,
-                node_input_size=64,
-                 hidden_size=64):
+                edge_input_size=32,
+                node_input_size=32,
+                 hidden_size=32):
         super(Encoder, self).__init__()
 
         self.eb_encoder = build_mlp(edge_input_size, hidden_size, hidden_size)
@@ -33,10 +41,9 @@ class Encoder(nn.Module):
 
 class GnBlock(nn.Module):
 
-    def __init__(self, hidden_size=64):
+    def __init__(self, hidden_size=32):
 
         super(GnBlock, self).__init__()
-
 
         eb_input_dim = 3 * hidden_size
         nb_input_dim = 2 * hidden_size
@@ -59,7 +66,7 @@ class GnBlock(nn.Module):
 
 class Decoder(nn.Module):
 
-    def __init__(self, hidden_size=64, output_size=1):
+    def __init__(self, hidden_size=32, output_size=1):
         super(Decoder, self).__init__()
         self.decode_module = build_mlp(hidden_size, hidden_size, output_size, lay_norm=False)
 
@@ -69,7 +76,7 @@ class Decoder(nn.Module):
 
 class EncoderProcesserDecoder(nn.Module):
 
-    def __init__(self, message_passing_num, node_input_size, edge_input_size, hidden_size=64):
+    def __init__(self, message_passing_num, node_input_size, edge_input_size, hidden_size=32):
 
         super(EncoderProcesserDecoder, self).__init__()
 
@@ -83,8 +90,8 @@ class EncoderProcesserDecoder(nn.Module):
         self.decoder = Decoder(hidden_size=hidden_size, output_size=2)
 
     def forward(self, graph):
-        # edge features (jump S, jump B, jump H, jump beta2, avg beta2, avg h, nx, ny, len)
-        n = graph.edge_attr[:,[6,7]]
+        # edge features (jump S, jump H, avg H, avg beta2, nx, ny, len)
+        n = graph.edge_attr[:,[4,5]]
 
         graph= self.encoder(graph)
         for model in self.processer_list:

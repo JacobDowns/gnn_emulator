@@ -33,7 +33,7 @@ for i in range(25):
 
             plt.plot([m[0], m[0] + n[0]], [m[1], m[1] + n[1]], 'r-')
             plt.plot(cx, cy, 'k-')
-
+ 
         plt.gca().set_aspect('equal')
         plt.show()
         """
@@ -88,7 +88,7 @@ for i in range(25):
         beta2s_cr = np.array(beta2s_cr, np.float32)
         us_rt = np.array(us_rt, dtype=np.float32)
 
-        edge_features = np.stack([jS_cr, jH_cr,  Hs_cr, beta2s_cr, us_rt]).transpose((1,2,0))
+        edge_features = np.stack([jS_cr, jH_cr, Hs_cr, beta2s_cr*Hs_cr, us_rt]).transpose((1,2,0))
         np.save(f'data/edge_features_{i}.npy', edge_features)
         np.save(f'data/coords_{i}', coords)
         np.save(f'data/edges_{i}.npy', edges)

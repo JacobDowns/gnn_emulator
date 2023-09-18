@@ -10,7 +10,7 @@ dataset_dir = "data/"
 batch_size = 1
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-simulator = Simulator(message_passing_num=8, node_input_size=4, edge_input_size=9, device=device)
+simulator = Simulator(message_passing_num=5, node_input_size=4, edge_input_size=7, device=device)
 simulator.load_checkpoint()
 
 def test(model:Simulator, test_loader):
@@ -46,11 +46,11 @@ def test(model:Simulator, test_loader):
 
 
             plt.subplot(2,1,1)
-            plt.scatter(mx, my, c=z, s=2)
+            plt.scatter(mx, my, c=z, s=2, vmin=z.min(), vmax=z.max())
             plt.colorbar()
 
             plt.subplot(2,1,2)
-            plt.scatter(mx, my, c=out, s=2)
+            plt.scatter(mx, my, c=out, s=2, vmin=z.min(), vmax=z.max())
             plt.colorbar()
 
             plt.show()

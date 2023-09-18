@@ -24,7 +24,7 @@ class GraphDataLoader(object):
         edges = np.load(f'data/edges_{i}.npy')
         normals = np.load(f'data/normals_{i}.npy')
 
-        # edge features (jump S, jump B, jump H, jump beta2, avg beta2, avg h, u_rt)
+        # edge features (jump S, jump B, avg H, avg beta2, u_rt)
         edge_features = np.load(f'data/edge_features_{i}.npy')
     
         for j in range(0, edge_features.shape[0]):
@@ -33,8 +33,8 @@ class GraphDataLoader(object):
             mask0 = scatter_mean(H_e, torch.tensor(edges[:,1], dtype=torch.int64), dim=0, dim_size=len(coords))
             mask1 = scatter_mean(H_e, torch.tensor(edges[:,0], dtype=torch.int64), dim=0, dim_size=len(coords))
             mask = np.zeros(len(coords))
-            mask[mask0 > 1e-3] = 1.
-            mask[mask1 > 1e-3] = 1.
+            mask[mask0 > 1.0001e-3] = 1.
+            mask[mask1 > 1.0001e-3] = 1.
 
             # edge offsets and lengths
                         
@@ -81,7 +81,7 @@ class GraphDataLoader(object):
             dy = dy[:,1] - dy[:,0]
             dd = np.sqrt(dx**2 + dy**2)
             # Edge features are the same for the edges going the opposite way except, jumps and normals are flipped
-            edge_features_c = np.concatenate([edge_features_c, edge_features_c*[-1,-1,-1,-1,1,1,-1,-1]])
+            edge_features_c = np.concatenate([edge_features_c, edge_features_c*[-1,-1,1,1,-1,-1]])
             # Similarly, rt coefficients are flipped
             y_c = np.concatenate([y_c, -y_c])
             # Add vertex offsets and edge lengths as features
@@ -94,11 +94,11 @@ class GraphDataLoader(object):
                 pos = coords_c
             )
 
-            vertex_features_c = scatter_mean(data_j.edge_attr[:,0:6], data_j.edge_index[1], dim=0, dim_size=len(coords_c))
+            vertex_features_c = scatter_mean(data_j.edge_attr[:,0:4], data_j.edge_index[1], dim=0, dim_size=len(coords_c))
             data_j.x = vertex_features_c
 
             # Normalization
-            data_j.edge_attr /= torch.tensor([0.026, 0.026, 0.099, 0.026, 0.164, 0.026, 0.707, 0.707, 0.044])
-            data_j.y = data_j.y / torch.tensor(0.022453701)
+            data_j.edge_attr /= torch.tensor([0.0247, 0.0284, 0.1312, 0.0738, 0.707, 0.707, 0.0444])
+            data_j.y = data_j.y / torch.tensor(0.0458)
             self.data.append(data_j)
             #print(data_j)

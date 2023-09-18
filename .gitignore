@@ -161,4 +161,5 @@ cython_debug/
 
 *.py~
 *.npy
-fourier/data/*
+*.zarr
+raster_to_mesh/glaciers.zarr/*
