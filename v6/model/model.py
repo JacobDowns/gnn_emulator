@@ -2,6 +2,7 @@ import torch.nn as nn
 from .blocks import EdgeBlock, NodeBlock
 from utils.utils import decompose_graph, copy_geometric_data
 from torch_geometric.data import Data
+from torch_scatter import scatter_sum, scatter_mean
 
 def build_mlp(in_size, hidden_size, out_size, lay_norm=True):
 
@@ -90,16 +91,24 @@ class EncoderProcesserDecoder(nn.Module):
         self.decoder = Decoder(hidden_size=hidden_size, output_size=2)
 
     def forward(self, graph):
-        # edge features (jump S, jump H, avg H, avg N*beta2, nx, ny, len)
-        avgH = graph.edge_attr[:,2]
-        n = graph.edge_attr[:,[4,5]]
-        len = graph.edge_attr[:,-1]
 
-        graph= self.encoder(graph)
+        vertex_features = scatter_mean(
+            graph.edge_attr[:,:],
+            graph.edge_index[1],
+            dim=0,
+            dim_size=graph.num_nodes
+        )
+        graph.x = vertex_features
+
+        # Edge features are 
+        # jump S, avg H, avg H * avg beta2, nx, ny, len
+        n = graph.edge_attr[:,[3,4]]
+
+        graph = self.encoder(graph)
         for model in self.processer_list:
             graph = model(graph)
         decoded = self.decoder(graph)
-        return (decoded*avgH*n).sum(axis=1)*len
+        return (decoded*n).sum(axis=1)
 
 
 

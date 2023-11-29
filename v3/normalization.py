@@ -23,6 +23,7 @@ for g in d.data:
 
     edge_stds.append(g.edge_attr.std(axis=0))
     node_stds.append(g.x.std(axis=0))
+
     y_stds.append(g.y.std(axis=0))
 
 node_stds = np.array(node_stds)

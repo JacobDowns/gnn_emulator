@@ -63,19 +63,13 @@ def test(model:Simulator, test_loader):
 
 
 if __name__ == '__main__':
+   
     loader = GraphDataLoader()
-    data = loader.data
+    train_data = loader.training_data
+    test_data = loader.test_data
 
-    N = len(data)
-    train_frac = 0.85
-    N_train = int(N*train_frac)
-    N_test = N - N_train
-
-    train_data = data[0:N_train]
-    test_data = data[N_train:]
-
-    train_loader = DataLoader(dataset=train_data, batch_size=batch_size, num_workers=10, shuffle = True)
-    test_loader = DataLoader(dataset=test_data, batch_size=batch_size, num_workers=10, shuffle = True)
+    train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle = True)
+    test_loader = DataLoader(dataset=test_data, batch_size=batch_size, shuffle = True)
     
 
     test(simulator, test_loader)

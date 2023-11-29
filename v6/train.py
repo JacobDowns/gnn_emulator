@@ -5,6 +5,7 @@ from utils.utils import NodeType
 from torch_geometric.loader import DataLoader
 import torch_geometric.transforms as T
 from data_loader import GraphDataLoader
+import numpy as np
 
 dataset_dir = "data/"
 batch_size = 1
@@ -14,9 +15,9 @@ save_epoch = 10
 epochs = 200
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-simulator = Simulator(message_passing_num=8, node_input_size=4, edge_input_size=7, device=device)
+simulator = Simulator(message_passing_num=15, node_input_size=6, edge_input_size=6, device=device)
 optimizer = torch.optim.Adam(simulator.parameters(), lr=1e-4)
-#simulator.load_checkpoint()
+simulator.load_checkpoint()
 print('Optimizer initialized')
 
 def train(model:Simulator, train_loader, test_loader, optimizer):
@@ -25,17 +26,27 @@ def train(model:Simulator, train_loader, test_loader, optimizer):
         print('Epoch', ep)
         model.train() 
         train_error = 0.
+
         n = 0
         for batch_index, graph in enumerate(train_loader):
             del graph['pos']
+
+            eps0 = torch.tensor(np.random.randn(graph.edge_attr.shape[0])) * (graph.edge_attr[:,0].std() / 20.)
+            eps1 = torch.tensor(np.random.randn(graph.edge_attr.shape[0])) * (graph.edge_attr[:,1] / 20.)
+            eps2 = torch.tensor(np.random.randn(graph.edge_attr.shape[0])) * (graph.edge_attr[:,2] / 20.)
+            
+            graph.edge_attr[:,0] += eps0
+            graph.edge_attr[:,1] += eps1
+            graph.edge_attr[:,2] += eps2
+            graph.edge_attr[:,1] = torch.clip(graph.edge_attr[:,1], min=0.)
+            graph.edge_attr[:,2] = torch.clip(graph.edge_attr[:,2], min=0.)
+
             graph = graph.cuda()
             
             y = graph.y
             out = model(graph)
 
-
             errors = (out - y)**2
-
             loss = torch.mean(errors)
             train_error += loss.item()
 
@@ -70,14 +81,8 @@ def train(model:Simulator, train_loader, test_loader, optimizer):
 if __name__ == '__main__':
 
     loader = GraphDataLoader()
-    data = loader.data
-  
-    N = len(data)
-    train_frac = 0.85
-    N_train = int(N*train_frac)
-    N_test = N - N_train
-    train_data = data[0:N_train]
-    test_data = data[N_train:]
+    train_data = loader.training_data
+    test_data = loader.test_data
 
     train_loader = DataLoader(dataset=train_data, batch_size=batch_size, shuffle = True)
     test_loader = DataLoader(dataset=test_data, batch_size=batch_size, shuffle = True)
