@@ -14,7 +14,6 @@ class SimulationLoader:
 
         self.file_name = file_name
         
-
         with fd.CheckpointFile(file_name, 'r') as afile:
             self.mesh = afile.load_mesh()
             self.grad_solver = GradSolver(self.mesh)
@@ -24,24 +23,26 @@ class SimulationLoader:
             self.grad_B = np.copy(self.grad_solver.solve_grad(self.B).dat.data)
     
     
-    def get_step(self, j):
+    def get_vars(self, j):
         d = {}
         with fd.CheckpointFile(self.file_name, 'r') as afile:
-            d['H_dg'] = afile.load_function(self.mesh, 'H0', idx=j)
-            d['beta2_cg'] = afile.load_function(self.mesh, 'beta2', idx=j)
-            d['ubar_rt'] = afile.load_function(self.mesh, 'Ubar0', idx=j)
+            d['B'] = self.B
+            d['grad_B'] = self.grad_B
+            d['H'] = afile.load_function(self.mesh, 'H0', idx=j)
+            d['beta2'] = afile.load_function(self.mesh, 'beta2', idx=j)
+            d['Ubar'] = afile.load_function(self.mesh, 'Ubar0', idx=j)
 
             return d
 
 
     # Compile graph features
-    def get_graph(self, j):
+    def get_graph(self, vars):
 
         # Edge features
         d = self.get_step(j)
 
-        H_avg = self.data_mapper.get_avg(d['H_dg'])
-        beta2_avg = self.data_mapper.get_avg(self.B + d['beta2_cg'])
+        H_avg = self.data_mapper.get_avg(vars['H'])
+        beta2_avg = self.data_mapper.get_avg(vars['beta2'])
 
         edges = self.data_mapper.edges
         coords = self.data_mapper.coords
@@ -66,7 +67,7 @@ class SimulationLoader:
             H_avg * beta2_avg,
         ])
 
-        Y = d['ubar_rt'].dat.data
+        Y = vars['ubar_rt'].dat.data
 
         data = Data(
             y = torch.tensor(Y, dtype=torch.float32),
@@ -76,18 +77,7 @@ class SimulationLoader:
             pos = torch.tensor(coords, dtype=torch.float32)
         )
 
-        return data
-    
-
-    # Load graphs for each model time step
-    def get_graphs(self):
-        data = []
-        for j in range(140):
-            g = self.get_graph(j)
-            data.append(g)
-
-        return data
-    
+        return data    
 
 class SimulatorDataset(Dataset):
      
@@ -103,15 +93,14 @@ class SimulatorDataset(Dataset):
         return 40*140
     
     def __getitem__(self, idx):
-        sim_idx = np.floor(idx / 40)
-        time_idx = idx % 40
+        sim_idx = int(idx / 140)
+        time_idx = idx % 140
         print(sim_idx, time_idx)
 
         sim_loader = self.sim_loaders[sim_idx]
-
-        graph = sim_loader.get_graph(time_idx)
+        data = sim_loader.get_step(time_idx)
+        return data
 
 d = SimulatorDataset()
-
-d.__get__item(10)
+d.__getitem__(10)
 print(d)

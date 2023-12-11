@@ -41,7 +41,7 @@ class SimulationLoader:
         d = self.get_step(j)
 
         H_avg = self.data_mapper.get_avg(d['H_dg'])
-        beta2_avg = self.data_mapper.get_avg(self.B + d['beta2_cg'])
+        beta2_avg = self.data_mapper.get_avg(d['beta2_cg'])
 
         edges = self.data_mapper.edges
         coords = self.data_mapper.coords

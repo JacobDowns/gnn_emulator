@@ -22,7 +22,7 @@ class GraphDataLoader(object):
         x_i_std = torch.tensor([
             81.189,
             33.786,
-            1.1434e5
+            41.8627
         ])
 
         y_std = 3.7353
