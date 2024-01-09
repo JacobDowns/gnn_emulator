@@ -2,8 +2,10 @@ import os
 os.environ['OMP_NUM_THREADS'] = '1'
 import firedrake as df
 import numpy as np
-import torch
-from petsc4py import PETSc
+import time
+
+from firedrake.petsc import PETSc
+
 
 def full_quad(order):
     points,weights = np.polynomial.legendre.leggauss(order)
@@ -58,46 +60,33 @@ class VerticalIntegrator(object):
         return sum([self.integral_term(f,s,w) 
                     for s,w in zip(self.points,self.weights)])  
 
-class LossModel:
+class VelocityModel:
     def __init__(
-            self, 
-            mesh,
+            self, mesh,
             solver_type='direct',
             vel_scale=1, 
             thk_scale=1,
             len_scale=1e3, 
             beta_scale=1e6,
             time_scale=1,
-            g=9.81,
-            rho_i=917.,
-            rho_w=1000.0,
-            n=3.0,
-            A=1e-16,
-            eps_reg=1e-6,
-            thklim=1e-3,
-            theta=1.0,
-            alpha=0,
+            g=9.81, rho_i=917., rho_w=1000.0,
+            n=3.0, A=1e-16, eps_reg=1e-6,
+            thklim=1e-3, theta=1.0, alpha=0,
             p=4,
-            membrane_degree=2,
-            shear_degree=3,
-            ssa=False
-        ):
+            membrane_degree=2, shear_degree=3, ssa=False):
             
         self.mesh = mesh
         nhat = df.FacetNormal(mesh)
 
         E_cg1 = self.E_cg1 = df.FiniteElement('CG',mesh.ufl_cell(),1)
         E_thk = self.E_thk = df.FiniteElement('DG',mesh.ufl_cell(),0)
-    
-        E_bar = self.E_bar = df.FiniteElement('RT', mesh.ufl_cell(),1)
-        E_def = self.E_def = df.FiniteElement('RT', mesh.ufl_cell(),1)
+        E_vel = self.E_vel = df.FiniteElement('RT', mesh.ufl_cell(),1)
         E_grd = self.E_grd = df.FiniteElement('RT',mesh.ufl_cell(),1)
 
-        E = self.E = df.MixedElement(E_bar,E_def)
+        E = self.E = df.MixedElement(E_vel,E_vel)
         
         Q_cg1 = self.Q_cg1 = df.FunctionSpace(mesh,E_cg1)
-        Q_bar = self.Q_bar = df.FunctionSpace(mesh,E_bar)
-        Q_def = self.Q_def = df.FunctionSpace(mesh,E_def)
+        Q_vel = self.Q_vel = df.FunctionSpace(mesh,E_vel)
         Q_thk = self.Q_thk = df.FunctionSpace(mesh,E_thk)
         Q_grd = self.Q_grd = df.FunctionSpace(mesh,E_grd)
         V = self.V = df.FunctionSpace(mesh,E)
@@ -107,8 +96,6 @@ class LossModel:
         self.area = df.assemble(self.one*df.dx)
 
         theta = self.theta = df.Constant(theta)
-        self.t = df.Constant(0.0)
-        dt = self.dt = df.Constant(1.0)
 
         g = self.g = df.Constant(g)
         rho_i = self.rho_i = df.Constant(rho_i)
@@ -134,13 +121,10 @@ class LossModel:
         omega = self.omega = df.Constant(rho_i*g*thk_scale**3
                                          / (eta_star*len_scale*vel_scale))
 
-      
-    
-
         W = self.W = df.Function(V)
         W_i = self.W_i = df.Function(V)
-        Psi = self.Psi = df.TestFunction(V)
-        dW = self.dW = df.TrialFunction(V)
+        Psi = df.TestFunction(V)
+        dW = df.TrialFunction(V)
 
         Ubar,Udef = df.split(W)
         ubar,vbar = Ubar
@@ -158,28 +142,20 @@ class LossModel:
         B_grad = self.B_grad = df.Function(Q_grd)
         Chi = df.TestFunction(Q_grd)
         dS = df.TrialFunction(Q_grd)
+        dB = df.TrialFunction(Q_grd)
 
-        self.Ubar0 = df.Function(Q_bar)
-        self.Udef0 = df.Function(Q_def)
+        self.Ubar0 = df.Function(Q_vel, name='Ubar0')
+        self.Udef0 = df.Function(Q_vel, name='Udef0')
+        H = self.H = df.Function(Q_thk,name='H')
+        B = self.B = df.Function(Q_thk,name='B')
 
-        
-        B = self.B = df.Function(Q_thk, name='B')
-        H = self.H = df.Function(Q_thk, name='H')
-
-
-        S_lin = self.S_lin = df.Function(Q_thk)  
-        B_lin = self.B_lin = df.Function(Q_thk)  
-        S_grad_lin = self.S_grad_lin = df.Constant([0.0,0.0])
-        B_grad_lin = self.B_grad_lin = df.Constant([0.0,0.0])
-
-        adot = self.adot = df.Function(Q_thk) 
-        beta2 = self.beta2 = df.Function(Q_cg1)
+        beta2 = self.beta2 = df.Function(Q_cg1, name='beta2')
         alpha = self.alpha = df.Constant(alpha)
 
 
         S = self.S = B + H
-
-        self.F_U = F_U = df.Function(Q_bar)
+    
+        self.F_U = F_U = df.Function(Q_vel)
         self.F_H = F_H = df.Function(Q_thk)
 
         u = VerticalBasis([ubar,udef],H,S_grad,B_grad,p=p,ssa=ssa)
@@ -238,47 +214,49 @@ class LossModel:
 
         def membrane_boundary_form_nopen(s):
             un = u(s)*nhat[0] + v(s)*nhat[1]
-            return alpha*(phi_x(s)*un*nhat[0] + phi_y(s)*un*nhat[1])*df.ds#(degree=4)
+            return alpha*(phi_x(s)*un*nhat[0] + phi_y(s)*un*nhat[1])*df.ds
 
         def membrane_boundary_form_nat(s):
-            return 2*eta(s)*(phi_outer_membrane(s)*eps_membrane(s)).sum()*H*df.ds#(degree=4)
+            return 2*eta(s)*(phi_outer_membrane(s)*eps_membrane(s)).sum()*H*df.ds
 
         def membrane_boundary_form_pressure(s):
-            return s*omega*H*(phi_x(s)*nhat[0] + phi_y(s)*nhat[1])*df.ds#(degree=4)
+            return s*omega*H*(phi_x(s)*nhat[0] + phi_y(s)*nhat[1])*df.ds
 
-        if ssa:
-            membrane_stress = -(vi_x.intz(membrane_form) 
-                                + vi_x.intz(membrane_boundary_form_nopen))
-        else:
-            membrane_stress = -(vi_x.intz(membrane_form) 
+        membrane_stress = -(vi_x.intz(membrane_form) 
                                 + vi_z.intz(shear_form) 
                                 + vi_x.intz(membrane_boundary_form_nopen))
 
+       
         self.N = df.Constant(0.15)*rho_i*g*(H)
         basal_stress = -gamma*beta2*self.N*df.dot(U_b,Phi_b)*df.dx
 
-        driving_stress = (omega*H*df.dot(S_grad_lin,Phibar)*df.dx#(degree=4)
-                          - omega*df.div(Phibar*H)*(B - S_lin)*df.dx#(degree=4)
-                          - omega*df.div(Phibar*H)*H*df.dx#(degree=4) 
-                          + omega*df.jump(Phibar*H,nhat)*df.avg(B - S_lin)*df.dS 
+        driving_stress = (
+                          - omega*df.div(Phibar*H)*(B)*df.dx 
+                          - omega*df.div(Phibar*H)*H*df.dx 
+                          + omega*df.jump(Phibar*H,nhat)*df.avg(B)*df.dS 
                           + omega*df.jump(Phibar*H,nhat)*df.avg(H)*df.dS 
-                          + omega*df.dot(Phibar*H,nhat)*(B - S_lin)*df.ds 
-                          + omega*df.dot(Phibar*H,nhat)*(H)*df.ds)
+                          + omega*df.dot(Phibar*H,nhat)*(B)*df.ds 
+                          + omega*df.dot(Phibar*H,nhat)*(H)*df.ds
+                        )
+
+        forcing_stress = df.dot(Phibar,F_U)*df.dx
+
+        R_stress = membrane_stress + basal_stress - driving_stress - forcing_stress
 
 
-        R = self.R = membrane_stress + basal_stress - driving_stress
+        R = R_stress
+
+        R_lin = self.R_lin = df.replace(R,{W:dW})
 
         R_S = (df.dot(Chi,dS)*df.dx 
-              - df.dot(Chi,S_grad_lin)*df.dx 
-              + df.div(Chi)*(S - S_lin)*df.dx 
-              - df.dot(Chi,nhat)*(S - S_lin)*df.ds)
+              + df.div(Chi)*(S)*df.dx 
+              - df.dot(Chi,nhat)*(S)*df.ds)
 
-        R_B = (df.dot(Chi,dS)*df.dx 
-              - df.dot(Chi,B_grad_lin)*df.dx 
-              + df.div(Chi)*(S - B_lin)*df.dx
-              - df.dot(Chi,nhat)*(S - B_lin)*df.ds)
+        R_B = (df.dot(Chi,dB)*df.dx 
+              + df.div(Chi)*(B)*df.dx
+              - df.dot(Chi,nhat)*(B)*df.ds)
 
-        #coupled_problem = df.LinearVariationalProblem(df.lhs(R_lin),df.rhs(R_lin),W)
+        coupled_problem = df.LinearVariationalProblem(df.lhs(R_lin),df.rhs(R_lin),W)
 
         if solver_type=='direct':
             coupled_parameters = {"ksp_type": "preonly",
@@ -286,14 +264,12 @@ class LossModel:
                                   "pc_type": "lu",  
                                   "pc_factor_mat_solver_type": "mumps"} 
         else:
-            coupled_parameters = {'ksp_type': 'gmres',
-                                  'pc_type':'bjacobi',
-                                  "ksp_rtol":1e-5,
-                                  'ksp_initial_guess_nonzero': True}
+            coupled_parameters = {'pc_type': 'bjacobi',
+                                  "ksp_rtol":1e-5}
 
-        #self.coupled_solver = df.LinearVariationalSolver(
-        #    coupled_problem,
-        #    solver_parameters=coupled_parameters)
+        self.coupled_solver = df.LinearVariationalSolver(
+            coupled_problem,
+            solver_parameters=coupled_parameters)
         
         projection_parameters = {'ksp_type':'cg','mat_type':'matfree'}
         S_grad_problem = df.LinearVariationalProblem(df.lhs(R_S),df.rhs(R_S),S_grad)
@@ -305,44 +281,65 @@ class LossModel:
         self.B_grad_solver = df.LinearVariationalSolver(
             B_grad_problem,
             solver_parameters=projection_parameters)
+
+        self.H_temp = df.Function(self.Q_thk)
+
+    def solve(
+            self,
+            B,
+            H,
+            beta2,
+            picard_tol=1e-6,
+            max_iter=50,
+            momentum=0.0,
+            error_on_nonconvergence=False,
+            convergence_norm='linf',
+        ):
+
+        self.B.assign(B)
+        self.H.assign(H)
+        self.beta2.assign(beta2)
+
+        self.W.sub(0).assign(self.Ubar0)
+        self.W.sub(1).assign(self.Udef0)
+        self.W_i.assign(self.W)
         
+        eps = 1.0
+        i = 0
 
-        self.R_full = R_full = df.replace(self.R,{self.W_i:self.W})
+        self.S_grad_solver.solve()
+        self.B_grad_solver.solve()
+        
+        while eps>picard_tol and i<max_iter:
+            t_ = time.time()
+           
+            self.coupled_solver.solve()
+            
+            if convergence_norm=='linf':
+                with self.W_i.dat.vec_ro as w_i:
+                    with self.W.dat.vec_ro as w:
+                        eps = abs(w_i - w).max()[1]
+            else:
+                eps = (np.sqrt(
+                       df.assemble((self.W_i.sub(0) - self.W.sub(0))**2*df.dx))
+                       / self.area)
 
-        self.J_full = df.derivative(self.R_full, self.W)
-    
-"""
-class LossModel(torch.autograd.Function):
+            PETSc.Sys.Print(i,eps,time.time()-t_)
 
-    @staticmethod
-    def forward(ctx, Ubar, Udef, firedrake_loss):
-        ctx.firedrake_loss = firedrake_loss
-        ctx.save_for_backward(Ubar, Udef)
-        firedrake_loss.W.sub(0).dat.data[:] = Ubar
-        firedrake_loss.W.sub(1).dat.data[:] = Udef
-        R = firedrake_loss.forward() 
-        r = np.concatenate(R.dat.data)
-        R = 0.5*(r**2).sum()
-        R = torch.tensor(R)
-        return R
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        firedrake_loss = ctx.firedrake_loss
-        Ubar, Udef = ctx.saved_tensors
-        firedrake_loss.W.sub(0).dat.data[:] = Ubar
-        firedrake_loss.W.sub(1).dat.data[:] = Udef
-        R = firedrake_loss.forward()
-        dR = firedrake_loss.backward().M.handle
+            self.W_i.assign((1-momentum)*self.W + momentum*self.W_i)
+            i+=1
 
-        r = np.concatenate(R.dat.data)
-        r_p = PETSc.Vec().createWithArray(r)
-        y_p = dR.createVecLeft()
-        dR.multTranspose(r_p, y_p)
-        y = y_p.getArray()
-        y0 = y[0:len(R.dat.data[0])].copy()
-        y1 = y[len(R.dat.data[0]):].copy()
-        return torch.tensor(y0), torch.tensor(y1), None
-"""
+        if i==max_iter and eps>picard_tol:
+            converged=False
+        else:
+            converged=True
 
+        if error_on_nonconvergence and not converged:
+            return converged
+
+        self.Ubar0.assign(self.W.sub(0))
+        self.Udef0.assign(self.W.sub(1))
+
+        return converged
 
