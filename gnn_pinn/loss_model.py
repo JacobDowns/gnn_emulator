@@ -306,10 +306,43 @@ class LossModel:
             B_grad_problem,
             solver_parameters=projection_parameters)
         
-
-        self.R_full = R_full = df.replace(self.R,{self.W_i:self.W})
-
+        self.R_full = df.replace(self.R,{self.W_i:self.W})
         self.J_full = df.derivative(self.R_full, self.W)
+        # Stores vector Jacobian product
+        self.rJ = df.Function(self.V)
+
+
+
+class VelocityCost(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, Ubar, Udef, loss_integral):
+        ctx.loss_integral = loss_integral  
+        ctx.Ubar = Ubar  
+        ctx.Udef = Udef
+
+        loss_integral.W.sub(0).dat.data[:] = Ubar  
+        loss_integral.W.sub(1).dat.data[:] = Udef
+
+        r = np.concatenate(df.assemble(loss_integral.R_full).dat.data)
+        R = 0.5*(r**2).sum()
+        return torch.tensor(R) 
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        loss_integral = ctx.loss_integral
+        Ubar = ctx.Ubar
+        Udef = ctx.Udef
+        loss_integral.W.sub(0).dat.data[:] = Ubar
+        loss_integral.W.sub(0).dat.data[:] = Udef
+
+        r = df.assemble(loss_integral.R_full)
+        J = df.assemble(loss_integral.J_full).M.handle
+
+        with loss_integral.rJ.dat.vec as rJ_p:
+            with r as r_p:  
+                J.multTranspose(r_p, rJ_p)
+        
+        return torch.tensor(loss_integral.rJ.dat.data[0])*grad_output, torch.tensor(loss_integral.rJ.dat.data[1])*grad_output, None, None, None
     
 """
 class LossModel(torch.autograd.Function):
