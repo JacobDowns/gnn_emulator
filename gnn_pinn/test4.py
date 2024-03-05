@@ -7,23 +7,25 @@ from loss_model import LossModel
 import torch
 from petsc4py import PETSc
 import numpy as np
+import matplotlib.pyplot as plt
 
-i = 0
+i = 20
 file_name = f'/home/jake/ManuscriptCode/examples/gnn_emulator_runs/results/{i}/output.h5'
 
 with fd.CheckpointFile(file_name, 'r') as afile:
 
     mesh = afile.load_mesh()
 
-    j = 20
+    j = 50
     
     B = afile.load_function(mesh, 'B')
     H = afile.load_function(mesh, 'H0', idx=j)
     beta2 = afile.load_function(mesh, 'beta2', idx=j)
-    u = afile.load_function(mesh, 'Ubar0', idx=j)
+    #u = afile.load_function(mesh, 'Ubar0', idx=j)
 
     loss_integral = LossModel(mesh)
 
+    print(beta2.dat.data)
 
     loss_integral.B.assign(B)
     loss_integral.H.assign(H)
@@ -32,16 +34,27 @@ with fd.CheckpointFile(file_name, 'r') as afile:
     loss_integral.B_grad_solver.solve()
     loss_integral.S_grad_solver.solve()
 
+    z = fd.Function(loss_integral.V)
+    fd.solve(loss_integral.R == 0, loss_integral.W)
 
-    #fd.solve(loss_integral.R_full == 0, loss_integral.W)
+    a = fd.File('c.pvd')
+    b = fd.File('d.pvd')
+    a.write(loss_integral.W.sub(0))
+    b.write(loss_integral.W.sub(1))
 
+    quit()
     
     #n = len(u.dat.data)
     u0 = fd.Function(loss_integral.V)
     x = fd.Function(loss_integral.V)
 
+    ubar, udef = fd.split(u0) 
 
-    for i in range(3):
+    v0 = fd.Function(loss_integral.Q_bar)
+    v1 = fd.Function(loss_integral.Q_def)
+
+
+    for i in range(10):
 
         print(i)
 
@@ -62,10 +75,18 @@ with fd.CheckpointFile(file_name, 'r') as afile:
 
 
         loss_integral.W.assign(u0)
-        print(u0.dat.data)
 
-    out = fd.File('test1.pvd')
-    out.write(u0.sub(0))
+        #print(np.sqrt(np.concatenate(R.dat.data)**2).sum())
+        print((u0.dat.data[0] - u0.dat.data[1]).max())
+
+
+    v0.dat.data[:] = u0.dat.data[0]
+    v1.dat.data[:] = u0.dat.data[1]
+
+    out1 = fd.File('a.pvd')
+    out2 = fd.File('b.pvd')
+    out1.write(v0)
+    out2.write(v1)
 
 
     

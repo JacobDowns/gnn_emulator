@@ -60,8 +60,10 @@ class DataMapper:
         self.vy0 = fd.assemble(v_rt[1]('+')*fd.dS + v_rt[1]*fd.ds).dat.data
         self.v0 = np.c_[self.vx0, self.vy0]
         self.vx1 = fd.assemble(v_rt[0]('-')*fd.dS + v_rt[0]*fd.ds).dat.data
-        self.vy1 = fd.assemble(v_rt[1]('-')*fd.dS + v_rt[0]*fd.ds).dat.data
+        self.vy1 = fd.assemble(v_rt[1]('-')*fd.dS + v_rt[1]*fd.ds).dat.data
         self.v1 = np.c_[self.vx1, self.vy1]
+
+       
 
         # Normal vectors
         nhat = fd.FacetNormal(mesh)
@@ -73,7 +75,10 @@ class DataMapper:
         # Edge lengths
         self.edge_lens = fd.assemble(v_cr('+')*fd.dS + v_cr*fd.ds).dat.data
         self.v_cr = v_cr
-        
+
+        self.v0 /= self.edge_lens[:,np.newaxis]
+        self.v1 /= self.edge_lens[:,np.newaxis]
+         
         # Cell areas 
         v_dg = fd.TestFunction(V_dg)
         A = fd.assemble(v_dg * fd.dx).dat.data

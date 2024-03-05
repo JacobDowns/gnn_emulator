@@ -13,13 +13,15 @@ class LossIntegral:
         self.Ubar = Ubar = df.Function(self.V)
         self.w_bar = df.TestFunction(self.V)
 
-        c0 = df.Constant(0.75)
-        c1 = df.Constant(0.25)
+        c0 = df.Constant(1.)
+        c1 = df.Constant(0.3)
 
         rbar = Ubar - Ubar_obs
 
         self.I = c0*df.dot(rbar, rbar)*df.dx
-        self.I += c1*df.div(Ubar)**2*df.dx
+        #self.I += c1*df.div(Ubar)**2*df.dx
+        self.I += c1*df.dot(df.grad(Ubar[0]), df.grad(Ubar[0]))*df.dx
+        self.I += c1*df.dot(df.grad(Ubar[1]), df.grad(Ubar[1]))*df.dx
         self.J_bar = df.derivative(self.I, self.Ubar, self.w_bar)
 
 

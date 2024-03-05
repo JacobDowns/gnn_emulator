@@ -66,7 +66,7 @@ class LossModel:
             vel_scale=1, 
             thk_scale=1,
             len_scale=1e3, 
-            beta_scale=1e6,
+            beta_scale=1e3,
             time_scale=1,
             g=9.81,
             rho_i=917.,
@@ -146,10 +146,6 @@ class LossModel:
         ubar,vbar = Ubar
         udef,vdef = Udef
 
-        Ubar_i,Udef_i = df.split(W_i)
-        ubar_i,vbar_i = Ubar_i
-        udef_i,vdef_i = Udef_i
-
         Phibar,Phidef = df.split(Psi)
         phibar_x,phibar_y = Phibar
         phidef_x,phidef_y = Phidef
@@ -162,20 +158,16 @@ class LossModel:
         self.Ubar0 = df.Function(Q_bar)
         self.Udef0 = df.Function(Q_def)
 
-        
         B = self.B = df.Function(Q_thk, name='B')
         H = self.H = df.Function(Q_thk, name='H')
-
 
         S_lin = self.S_lin = df.Function(Q_thk)  
         B_lin = self.B_lin = df.Function(Q_thk)  
         S_grad_lin = self.S_grad_lin = df.Constant([0.0,0.0])
         B_grad_lin = self.B_grad_lin = df.Constant([0.0,0.0])
 
-        adot = self.adot = df.Function(Q_thk) 
         beta2 = self.beta2 = df.Function(Q_cg1)
         alpha = self.alpha = df.Constant(alpha)
-
 
         S = self.S = B + H
 
@@ -184,8 +176,8 @@ class LossModel:
 
         u = VerticalBasis([ubar,udef],H,S_grad,B_grad,p=p,ssa=ssa)
         v = VerticalBasis([vbar,vdef],H,S_grad,B_grad,p=p,ssa=ssa)
-        u_i = VerticalBasis([ubar_i,udef_i],H,S_grad,B_grad,p=p,ssa=ssa)
-        v_i = VerticalBasis([vbar_i,vdef_i],H,S_grad,B_grad,p=p,ssa=ssa)
+        u_i = VerticalBasis([ubar,udef],H,S_grad,B_grad,p=p,ssa=ssa)
+        v_i = VerticalBasis([vbar,vdef],H,S_grad,B_grad,p=p,ssa=ssa)
         phi_x = VerticalBasis([phibar_x,phidef_x],H,S_grad,B_grad,p=p,ssa=ssa)
         phi_y = VerticalBasis([phibar_y,phidef_y],H,S_grad,B_grad,p=p,ssa=ssa)
 
@@ -306,10 +298,12 @@ class LossModel:
             B_grad_problem,
             solver_parameters=projection_parameters)
         
-        self.R_full = df.replace(self.R,{self.W_i:self.W})
-        self.J_full = df.derivative(self.R_full, self.W)
+        #self.R_full = df.replace(self.R,{self.W_i:self.W})
+        self.J_full = df.derivative(self.R, self.W)
         # Stores vector Jacobian product
         self.rJ = df.Function(self.V)
+        # Stores Jacobian vector product
+        self.Jr = df.Function(self.V)
 
 
 
@@ -317,11 +311,11 @@ class VelocityCost(torch.autograd.Function):
     @staticmethod
     def forward(ctx, Ubar, Udef, loss_integral):
         ctx.loss_integral = loss_integral  
-        ctx.Ubar = Ubar  
+        ctx.Ubar = Ubar
         ctx.Udef = Udef
 
-        loss_integral.W.sub(0).dat.data[:] = Ubar  
-        loss_integral.W.sub(1).dat.data[:] = Udef
+        loss_integral.W.sub(0).dat.data[:] = Ubar.cpu().detach().numpy()  
+        loss_integral.W.sub(1).dat.data[:] = Udef.cpu().detach().numpy()
 
         r = np.concatenate(df.assemble(loss_integral.R_full).dat.data)
         R = 0.5*(r**2).sum()
@@ -333,16 +327,26 @@ class VelocityCost(torch.autograd.Function):
         Ubar = ctx.Ubar
         Udef = ctx.Udef
         loss_integral.W.sub(0).dat.data[:] = Ubar
-        loss_integral.W.sub(0).dat.data[:] = Udef
+        loss_integral.W.sub(1).dat.data[:] = Udef
 
         r = df.assemble(loss_integral.R_full)
-        J = df.assemble(loss_integral.J_full).M.handle
+        J = df.assemble(loss_integral.J_full)
 
-        with loss_integral.rJ.dat.vec as rJ_p:
-            with r as r_p:  
-                J.multTranspose(r_p, rJ_p)
+        ksp = PETSc.KSP().create()
+        ksp.setOperators(J.M.handle)
+
+        #with loss_integral.rJ.dat.vec as rJ_p:
+        #    with r.dat.vec as r_p:  
+        #        J.multTranspose(r_p, rJ_p)
+
+        with loss_integral.Jr.dat.vec as Jr_p:
+            with r.dat.vec as r_p:  
+                ksp.solve(r_p, Jr_p)
+
+
+        print('max', (loss_integral.Jr.dat.data[0] - loss_integral.Jr.dat.data[1]).max())
         
-        return torch.tensor(loss_integral.rJ.dat.data[0])*grad_output, torch.tensor(loss_integral.rJ.dat.data[1])*grad_output, None, None, None
+        return torch.tensor(loss_integral.Jr.dat.data[0])*grad_output, torch.tensor(loss_integral.Jr.dat.data[1])*grad_output, None, None, None
     
 """
 class LossModel(torch.autograd.Function):

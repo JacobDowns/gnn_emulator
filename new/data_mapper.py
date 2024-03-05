@@ -1,7 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import firedrake as fd
-from matplotlib.tri import Triangulation
 import os
 os.environ['OMP_NUM_THREADS'] = '1'
 
@@ -42,6 +40,12 @@ class DataMapper:
         self.x_cr = x_cr
         self.y_cr = y_cr
 
+        # Cell midpoints
+        x_dg = fd.interpolate(x[0], V_dg)
+        y_dg = fd.interpolate(x[1], V_dg)
+        print(x_dg.dat.data)
+        quit()
+
         def get_edge_map():
             ex0 = 0.5*self.xs[edges].sum(axis=1)
             ey0 = 0.5*self.ys[edges].sum(axis=1)
@@ -74,14 +78,18 @@ class DataMapper:
         self.edge_lens = fd.assemble(v_cr('+')*fd.dS + v_cr*fd.ds).dat.data
         self.v_cr = v_cr
         
-        # Cell areas 
-        v_dg = fd.TestFunction(V_dg)
-        A = fd.assemble(v_dg * fd.dx).dat.data
-        areas = fd.Function(V_dg)
-        areas.dat.data[:] = A
+        # Edge to cell map
+        v_dg = fd.Function(V_dg)
+        v_dg.dat.data[:] = np.arange(len(v_dg.dat.data))
+        self.c0 = fd.assemble((v_dg*v_cr)('+')*fd.dS + v_dg*v_cr*fd.ds).dat.data
+        self.c1 = fd.assemble((v_dg*v_cr)('-')*fd.dS + v_dg*v_cr*fd.ds).dat.data
+        self.c0 /= self.edge_lens
+        self.c1 /= self.edge_lens
 
-        self.a0 = fd.assemble((areas*v_cr)('+')*fd.dS + areas*v_cr*fd.ds).dat.data
-        self.a1 = fd.assemble((areas*v_cr)('-')*fd.dS + areas*v_cr*fd.ds).dat.data
+       
+        
+
+      
 
     def get_avg(self, f):
         vals = fd.assemble(fd.avg(f*self.v_cr)*fd.dS + f*self.v_cr*fd.ds).dat.data

@@ -121,7 +121,7 @@ class SimulatorDataset(Dataset):
             sim_loaders.append(SimulationLoader(file_name))
 
     def __len__(self):
-        return 10*140
+        return 40*140
     
     def __getitem__(self, idx):
         sim_idx = int(idx / 140)
